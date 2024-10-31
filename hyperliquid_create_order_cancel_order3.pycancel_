@@ -1,0 +1,102 @@
+import os
+import sys
+import ccxt.pro
+from pprint import pprint
+import os
+from dotenv import load_dotenv
+import asyncio
+import time
+# Cargar las variables de entorno desde el archivo .env
+load_dotenv()
+
+# Obtener la clave secreta
+if os.getenv('MAINNETOK') == True:
+    api_key = os.getenv('APIKEY21')
+    secret = os.getenv('SECRET21')
+    wallet = os.getenv('WALLET21')
+    url = os.getenv("MAINNET")
+else:
+    api_key = os.getenv('APIKEYPRUEBA')
+    secret = os.getenv('SECRETPRUEBA')
+    wallet = os.getenv('WALLETPRUEBA')
+    url = os.getenv("TESTNET")
+
+print("API Key:", api_key)
+print("Secret:", secret)
+print("Wallet:", wallet)
+print("URL   :", url)
+root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(root + '/python')
+# Especifica el símbolo de trading
+symbol = 'BTC/USDC:USDC'
+#time.sleep(999)
+
+# AUTO-TRANSPILE #
+async def main():
+    # Inicializar el exchange
+    hyperliquid = ccxt.pro.hyperliquid({
+        'apiKey': api_key,
+        'privateKey': secret,
+        'walletAddress': wallet,
+        'urls': {
+            'api': {
+                'public': url,  # Cambia esta URL según el endpoint de testnet real
+            }
+        },
+        'options': {
+            'defaultSlippage': 5  # Establece el deslizamiento predeterminado (en porcentaje)
+        }
+    })
+    print("Iniciando Hyperliquid create order - cancel order 3...")
+    hyperliquid.set_sandbox_mode(True)
+    await hyperliquid.load_markets()
+    market = hyperliquid.market(symbol)
+    hyperliquid.verbose = True  # uncomment for debugging purposes if necessary
+    order_type = 'limit'  # 'market' | 'limit'
+    side = 'buy'  # 'buy' | 'sell'
+    amount = 0.001  # how many contracts (see `market(symbol).contractSize` to find out coin portion per one contract)
+    ticker = await hyperliquid.fetch_ticker(symbol)
+    last_price = ticker['last']
+    ask_price = ticker['ask']
+    bid_price = ticker['bid']
+    # if order_type is 'market', then price is not needed
+    price = None
+    # if order_type is 'limit', then set a price at your desired level
+    if order_type == 'limit':
+        price = bid_price * 0.95 if (side == 'buy') else ask_price * 1.05  # i.e. 5% from current price
+    # set trigger price for stop-loss/take-profit to 2% from current price
+    # (note, across different exchanges "trigger" price can be also mentioned with different synonyms, like "activation price", "stop price", "conditional price", etc. )
+    stop_loss_trigger_price = (last_price if order_type == 'market' else price) * (0.98 if side == 'buy' else 1.02)
+    take_profit_trigger_price = (last_price if order_type == 'market' else price) * (1.02 if side == 'buy' else 0.98)
+    # when symbol's price reaches your predefined "trigger price", stop-loss order would be activated as a "market order". but if you want it to be activated as a "limit order", then set a 'price' parameter for it
+    params = {
+        'stopLoss': {
+            'triggerPrice': stop_loss_trigger_price,
+            'price': stop_loss_trigger_price * 0.98,
+        },
+        'takeProfit': {
+            'triggerPrice': take_profit_trigger_price,
+            'price': take_profit_trigger_price * 0.98,
+        },
+    }
+    position_amount = market['contractSize'] * amount
+    position_value = position_amount * last_price
+    # log
+    print('Going to open a position', 'for', amount, 'contracts worth', position_amount, market['base'], '~', position_value, market['settle'], 'using', side, order_type, 'order (', (hyperliquid.price_to_precision(symbol, price) if order_type == 'limit' else ''), '), using the following params:')
+    print(params)
+    print('-----------------------------------------------------------------------')
+    try:
+        order = await hyperliquid.create_order(symbol, order_type, side, amount, price, params)
+        pprint(order)
+        time.sleep(99)
+        # Cerrar la orden, suponiendo que tienes el ID de tu orden
+        print("Cerrando la orden...")
+        closed_order = await hyperliquid.cancel_order(order['id'], symbol)
+
+    except Exception as e:
+        print(f"Error al realizar una operación con Hyperliquid: {e}")
+    finally:
+        await hyperliquid.close()
+
+
+asyncio.run(main())

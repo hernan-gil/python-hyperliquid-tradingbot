@@ -109,6 +109,16 @@ def getparams(decision, price):
         }
     return params
 
+def process_data(data):
+    #aqui se procesan los datos para emitir las señales para el bot
+    df = data
+    return df
+
+def predict_state(data):
+    #aqui se crea el state y se devuelve para que se cree el trade con la decision al llamar a execute_trade
+    state = 'HOLD'
+    return state
+
 async def execute_trade(symbol, order_type, side, amount, price, params):
     """Ejecuta una operación de trading."""
     try:
@@ -127,6 +137,7 @@ async def main():
     order_type = 'LIMIT'
     current_state = 'SELL'
     amount = 0.001
+    order_type = 'limit'  # 'market' | 'limit'
     side = 'buy'  # 'buy' | 'sell'
     ticker = await hyperliquid.fetch_ticker(symbol)
     last_price = ticker['last']
